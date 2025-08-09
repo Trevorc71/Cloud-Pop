@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Word Cloud (Voice Pop)</title>
+<style>
+  :root{
+    --sky:#bfe9ff;
+    --mountain:#7aa3b4;
+    --mountain2:#5f8c9f;
+    --grass:#6ecf6a;
+    --cloud:#ffffff;
+    --ink:#1d3557;
+    --accent:#2a9d8f;
+    --danger:#e63946;
+    --ok:#2b9348;
+    --panel:#ffffffee;
+  }
+  *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif}
+  body{margin:0;background:linear-gradient(#9bd5ff 0%, var(--sky) 60%) fixed; color:var(--ink); overflow:hidden}
+  /* Scene */
+  #scene{
+    position:relative; width:100vw; height:100vh; overflow:hidden;
+    background:
+      radial-gradient(120vmax 60vmax at 50% -10%, rgba(255,255,255,0.4), transparent 60%),
+      linear-gradient(to top, var(--grass) 0 22%, transparent 22%),
+      /* mountains */
+      linear-gradient( to top right, transparent 48%, var(--mountain) 50%, transparent 52%) 0 78%/50% 30% no-repeat,
+      linear-gradient( to top left,  transparent 48%, var(--mountain2) 50%, transparent 52%) 50% 78%/50% 30% no-repeat;
+  }
+  /* Ground */
+  #ground{
+    position:absolute; left:0; right:0; bottom:0; height:22%;
+    border-top:4px solid #4faf49;
+  }
+  /* UI Panels */
+  .panel{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    background:var(--panel); padding:18px 20px; border-radius:14px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.12); text-align:center; width:min(92vw,520px)
+  }
+  .hidden{display:none !important}
+  button{
+    cursor:pointer; border:none; border-radius:12px; padding:12px 16px; font-weight:700;
+    background:var(--accent); color:white; font-size:1rem; box-shadow:0 6px 16px rgba(0,0,0,0.12)
+  }
+  button.secondary{background:#457b9d}
+  button:disabled{opacity:.6; cursor:not-allowed}
+  select, input[type="number"]{
+    width:100%; padding:10px 12px; border-radius:10px; border:1px solid #c9dee8; font-size:1rem;
+  }
+  .hint{font-size:.92rem; opacity:.8}
+  .big{font-size:1.2rem}
+  /* HUD */
+  #hud{
+    position:absolute; top:10px; left:50%; transform:translateX(-50%);
+    display:flex; gap:14px; align-items:center; background:var(--panel);
+    padding:8px 12px; border-radius:12px; box-shadow:0 6px 16px rgba(0,0,0,.12)
+  }
+  .pill{padding:6px 10px; border-radius:999px; font-weight:700; background:#eef7fb}
+  #strikes .x{color:var(--danger); font-weight:900; font-size:1.1rem;}
+  /* Clouds */
+  .cloud{
+    position:absolute; top:-100px; padding:8px 18px; white-space:nowrap; font-weight:800;
+    color:#1f3b4d; user-select:none
+  }
+  .bubble{
+    background:var(--cloud); border-radius:35px; padding:10px 22px; border:2px solid #e3f2ff;
+    box-shadow:0 10px 18px rgba(0,0,0,.12)
+  }
+  .cloud.pop{animation:pop .35s ease-out forwards}
+  @keyframes pop{to{transform:scale(1.2); opacity:0}}
+  .cloud.fail{animation:shake .4s ease-in-out 0s 1}
+  @keyframes shake{
+    25%{transform:translateX(-5px)} 50%{transform:translateX(5px)} 75%{transform:translateX(-3px)}
+  }
+  /* Countdown flash */
+  #countdown{
+    position:absolute; left:50%; top:35%; transform:translate(-50%,-50%);
+    font-size:14vw; font-weight:900; color:#0b2b40; text-shadow:0 10px 30px rgba(0,0,0,.2)
+  }
+  /* Footer note */
+  #footnote{
+    position:absolute; bottom:6px; left:50%; transform:translateX(-50%); font-size:.8rem; opacity:.7
+  }
+</style>
+</head>
+<body>
+<div id="scene">
+  <div id="hud" class="hidden">
+    <div id="round" class="pill">Round 1/5</div>
+    <div id="gradePill" class="pill">Grade 3</div>
+    <div id="strikes" class="pill">Strikes: <span class="x">—</span></div>
+    <div id="status" class="pill">Mic: …</div>
+  </div>
+
+  <div id="startPanel" class="panel">
+    <h2>Word Cloud</h2>
+    <p class="big">Say the words in the clouds to pop them before they hit the ground.</p>
+    <div style="display:grid;gap:10px;margin:12px 0 10px">
+      <label>What grade are you in?
+        <select id="grade">
+          <option value="1">Grade 1</option>
+          <option value="2">Grade 2</option>
+          <option value="3" selected>Grade 3</option>
+          <option value="4">Grade 4</option>
+          <option value="5">Grade 5</option>
+          <option value="6">Grade 6</option>
+          <option value="7">Grade 7</option>
+          <option value="8">Grade 8</option>
+        </select>
+      </label>
+      <button id="playBtn">Play</button>
+      <div class="hint">We’ll check your microphone first. Best in Chrome.</div>
+    </div>
+  </div>
+
+  <div id="micPanel" class="panel hidden">
+    <h3>Microphone Check</h3>
+    <p>When you’re ready, <strong>say “all set”</strong>.</p>
+    <p class="hint">If it doesn’t hear you, make sure mic permission is allowed.</p>
+    <button id="micRetry" class="secondary">Restart Mic Check</button>
+  </div>
+
+  <div id="readyPanel" class="panel hidden">
+    <h3>Are you ready?</h3>
+    <p>Say <strong>“yes”</strong> to start the round.</p>
+    <button id="readyFallback" class="secondary">Tap to Start</button>
+  </div>
+
+  <div id="gameOver" class="panel hidden">
+    <h2 id="goTitle">Game Over</h2>
+    <p id="goMsg">You reached Round 3. Try again!</p>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button id="restart">Play Again</button>
+    </div>
+  </div>
+
+  <div id="countdown" class="hidden">3</div>
+  <div id="ground"></div>
+  <div id="footnote">Say any visible word to pop its cloud • Max 3 clouds at once • 3 strikes ends the game</div>
+</div>
+
+<script>
+(()=>{
+// ---------- Utilities ----------
+const $ = sel => document.querySelector(sel);
+const rnd = (min,max)=> Math.floor(Math.random()*(max-min+1))+min;
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const sayClean = s => (s||"").toLowerCase().replace(/[^a-z0-9'\- ]+/g,' ').replace(/\s+/g,' ').trim();
+const pickN = (arr,n)=>arr.sort(()=>Math.random()-0.5).slice(0,n);
+
+// ---------- Word Lists (median difficulty per grade) ----------
+const WORDS = {
+  1: ["cat","dog","sun","hat","run","big","blue","fish","apple","milk","tree","book","ball","jump","happy","rain","bird","cake","bike","hand"],
+  2: ["river","garden","pillow","window","yellow","family","candle","pocket","basket","market","silver","tasty","school","animal","cloud","ticket","supper","dream","circle","wooden"],
+  3: ["whisper","bridge","shadow","thunder","travel","puzzle","library","chuckle","planet","finish","danger","cousin","secret","rocket","forest","wonder","middle","cotton","basketball","sudden"],
+  4: ["discover","arrive","element","pattern","quarter","measure","balance","electric","popular","natural","include","imagine","muscle","surface","economy","precious","harvest","journey","benefit","average"],
+  5: ["identify","predict","character","contrast","fraction","argument","solution","ancient","vehicle","oxygen","translate","resource","evidence","process","texture","variable","ecosystem","industry","increase","structure"],
+  6: ["property","conflict","conclude","generate","sequence","analysis","function","strategy","relevant","estimate","exposure","context","impact","persist","precise","adaptation","consumer","parallel","tension","venture"],
+  7: ["interpret","sufficient","coincide","component","emphasis","hypothesis","transition","subsequent","notion","simulate","criteria","inherent","integrate","allocate","applicable","capable","elastic","cohesion","attain","viable"],
+  8: ["ambiguous","correlate","inference","inevitable","paradox","phenomenon","plausible","preliminary","qualitative","quantitative","redundant","resilient","significant","synthesize","transient","ubiquitous","validate","variable","vulnerable","warrant"]
+};
+
+// ---------- State ----------
+let recognition, listening=false;
+let grade=3, round=1, strikes=0, score=0, activeClouds = new Map();
+let roundInFlight=false, stopped=false;
+
+// ---------- Speech Setup ----------
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const speechSupported = !!SpeechRec;
+
+function startRecognition(lang='en-US'){
+  if(!speechSupported) return;
+  if(recognition){ try{ recognition.stop(); }catch{} }
+  recognition = new SpeechRec();
+  recognition.lang = lang;
+  recognition.continuous = true;
+  recognition.interimResults = false;
+  recognition.onresult = onSpeechResult;
+  recognition.onend = ()=>{ if(!stopped){ try{ recognition.start(); }catch{} } };
+  recognition.onerror = (e)=>{ setStatus(`Mic error: ${e.error}`); };
+  try{
+    recognition.start(); listening=true; setStatus("Listening…");
+  }catch{ setStatus("Mic blocked? Tap Restart."); }
+}
+
+function stopRecognition(){
+  stopped=true;
+  if(recognition){ try{ recognition.stop(); }catch{} }
+  listening=false; setStatus("Mic stopped");
+}
+
+function onSpeechResult(ev){
+  for(let i=ev.resultIndex; i<ev.results.length; i++){
+    if(!ev.results[i].isFinal) continue;
+    const saidRaw = ev.results[i][0].transcript;
+    const said = sayClean(saidRaw);
+    if(!said) continue;
+    handleSpoken(said);
+  }
+}
+
+function setStatus(msg){ $('#status').textContent = msg; }
+
+// ---------- Flow Panels ----------
+const show = (id)=> $(id).classList.remove('hidden');
+const hide = (id)=> $(id).classList.add('hidden');
+
+function resetGame(){
+  stopRecognition();
+  activeClouds.forEach(c=>c.el.remove()); activeClouds.clear();
+  strikes=0; score=0; round=1; roundInFlight=false; stopped=false;
+  $('#round').textContent = `Round ${round}/5`;
+  $('#strikes').innerHTML = `Strikes: <span class="x">—</span>`;
+  $('#gradePill').textContent = `Grade ${grade}`;
+  hide('#gameOver'); hide('#micPanel'); hide('#readyPanel'); hide('#countdown'); show('#startPanel'); hide('#hud');
+}
+
+function gameOver(win=false){
+  stopRecognition();
+  roundInFlight=false;
+  $('#goTitle').textContent = win ? "You Win! 🎉" : "Game Over";
+  $('#goMsg').textContent = win
+    ? `Nice work! You cleared all 5 rounds with ${strikes} strike${strikes===1?'':'s'}.`
+    : `You reached Round ${round}. Final score: ${score}.`;
+  show('#gameOver');
+}
+
+// ---------- Mic Check / Ready handling ----------
+let expecting = null; // 'all set' or 'yes' or 'play'
+function handleSpoken(said){
+  // During mic check
+  if(expecting === 'all set'){
+    if(said.includes('all set')) {
+      expecting = null;
+      showReadyPrompt();
+      return;
+    }
+  }
+  // During ready prompt
+  if(expecting === 'yes'){
+    if(/\byes\b/.test(said)){
+      expecting = null;
+      startCountdownThenRound();
+      return;
+    }
+  }
+  // During gameplay: match visible clouds
+  if(roundInFlight){
+    // Try to pop any exact match among visible words
+    for(const [id, obj] of activeClouds){
+      if(said.split(' ').includes(obj.word)){
+        popCloud(id, true);
+        return;
+      }
+      // Also accept if the whole utterance equals the word
+      if(said === obj.word){
+        popCloud(id, true);
+        return;
+      }
+    }
+  }
+}
+
+function showMicCheck(){
+  hide('#startPanel'); hide('#readyPanel'); hide('#gameOver'); show('#micPanel'); show('#hud');
+  setStatus("Say “all set”");
+  expecting = 'all set';
+  stopped=false; startRecognition();
+}
+
+function showReadyPrompt(){
+  hide('#micPanel'); show('#readyPanel'); setStatus("Say “yes”");
+  expecting = 'yes';
+}
+
+function startCountdownThenRound(){
+  hide('#readyPanel');
+  const cd = $('#countdown');
+  cd.textContent = '3'; show('#countdown');
+  (async ()=>{
+    for(const n of [3,2,1]){ cd.textContent = n; await sleep(700); }
+    hide('#countdown');
+    roundInFlight = true;
+    startRound();
+  })();
+}
+
+// ---------- Clouds / Rounds ----------
+const LANES = 3; // max clouds on screen == lanes
+const GROUND_Y_RATIO = 0.78; // where mountains start
+
+function startRound(){
+  $('#round').textContent = `Round ${round}/5`;
+  const difficulty = Math.min(5, Math.max(0, round-1));
+  // Spawn count per round & speed scale
+  const spawnCount = 5 + round;          // 6..10 clouds
+  const fallDuration = 9000 - round*1000; // 8s .. 4s
+  const interval = Math.max(900, fallDuration/LANES); // spacing
+
+  const words = pickN(WORDS[grade].slice(), Math.min(spawnCount*2, WORDS[grade].length));
+  let spawned=0, done=0;
+
+  const timer = setInterval(()=>{
+    if(spawned >= spawnCount){ clearInterval(timer); return; }
+    if(activeClouds.size < LANES){
+      const w = words[spawned % words.length];
+      spawnCloud(w, fallDuration);
+      spawned++;
+    }
+  }, interval);
+
+  // Check end of round
+  const roundChecker = setInterval(()=>{
+    if(done >= spawnCount && activeClouds.size===0){
+      clearInterval(roundChecker);
+      roundInFlight=false;
+      if(strikes>=3){ gameOver(false); return; }
+      if(round>=5){ gameOver(true); return; }
+      round++; showReadyPrompt();
+    }
+  }, 200);
+
+  // Hook cloud completion
+  function markDone(){ done++; }
+  // Attach on the spawnCloud via returned controller
+  function spawnCloud(word, duration){
+    const el = document.createElement('div');
+    el.className = 'cloud';
+    const pad = document.createElement('div');
+    pad.className = 'bubble';
+    pad.textContent = word;
+    el.appendChild(pad);
+    $('#scene').appendChild(el);
+
+    // Lane positioning
+    const lane = pickLane();
+    const vw = window.innerWidth;
+    const laneX = (vw/(LANES+1))*(lane+1);
+    el.style.left = (laneX - 30) + 'px';
+    el.style.top = '-100px';
+
+    const id = crypto.randomUUID();
+    const obj = { id, el, word:sayClean(word), lane };
+    activeClouds.set(id, obj);
+
+    // Animate fall
+    const start = performance.now();
+    const endY = window.innerHeight*GROUND_Y_RATIO - 40;
+    function tick(now){
+      if(!activeClouds.has(id)) return; // popped or cleared
+      const t = Math.min(1, (now-start)/duration);
+      el.style.top = (-60 + t*endY) + 'px';
+      if(t<1){ requestAnimationFrame(tick); }
+      else {
+        // Missed
+        obj.el.classList.add('fail');
+        // Big X overlay
+        const miss = document.createElement('div');
+        miss.textContent = '✖';
+        miss.style.position='absolute';
+        miss.style.left='50%'; miss.style.top='-18px';
+        miss.style.transform='translate(-50%,-50%)';
+        miss.style.fontSize='28px'; miss.style.color='var(--danger)';
+        obj.el.appendChild(miss);
+        activeClouds.delete(id);
+        strikes++;
+        updateStrikes();
+        setTimeout(()=>{ obj.el.remove(); markDone(); if(strikes>=3){ gameOver(false);} }, 320);
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function pickLane(){
+    const used = new Set([...activeClouds.values()].map(o=>o.lane));
+    const options = [...Array(LANES).keys()].filter(i=>!used.has(i));
+    return options.length? options[rnd(0,options.length-1)] : rnd(0,LANES-1);
+  }
+}
+
+function popCloud(id, fromVoice){
+  const obj = activeClouds.get(id);
+  if(!obj) return;
+  obj.el.classList.add('pop');
+  activeClouds.delete(id);
+  score++;
+  setTimeout(()=>obj.el.remove(), 300);
+}
+
+// ---------- HUD ----------
+function updateStrikes(){
+  const s = strikes>=3 ? '✖✖✖' : '✖'.repeat(strikes) || '—';
+  $('#strikes').innerHTML = `Strikes: <span class="x">${s}</span>`;
+}
+
+// ---------- Events ----------
+$('#playBtn').addEventListener('click', ()=>{
+  grade = parseInt($('#grade').value || '3', 10);
+  $('#gradePill').textContent = `Grade ${grade}`;
+  if(!speechSupported){
+    alert("Heads up: your browser doesn't support speech recognition. You'll still be able to play using the Tap to Start and typing fallback (not voice).");
+  }
+  resetGame(); hide('#startPanel'); showMicCheck();
+});
+$('#micRetry').addEventListener('click', ()=>{ showMicCheck(); });
+$('#readyFallback').addEventListener('click', ()=>{ expecting=null; startCountdownThenRound(); });
+$('#restart').addEventListener('click', ()=>{ resetGame(); });
+
+// Start in clean state
+resetGame();
+
+// Resize safety: keep clouds within scene width
+window.addEventListener('resize', ()=>{
+  // No-op; simple layout recalcs on next spawns
+});
+
+})();
+</script>
+</body>
+</html>
